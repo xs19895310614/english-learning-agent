@@ -1157,6 +1157,7 @@ export default function App() {
   const removeConversation = async (conversation: Conversation) => {
     if (!window.confirm(`删除对话“${conversation.title}”？`)) return;
     await api.chat.delete(conversation.id);
+    conversationViewRef.current += 1;
     const remaining = await refreshConversations();
     if (conversation.id !== conversationId) return;
 
@@ -1186,12 +1187,14 @@ export default function App() {
       let activeConversationId = conversationId;
       if (!activeConversationId) {
         const conversation = await api.chat.conversation();
+        conversationViewRef.current += 1;
         activeConversationId = conversation.id;
         setConversationId(conversation.id);
         setConversationTitle(conversation.title);
         setConversations((current) => [conversation, ...current]);
         window.localStorage.setItem("ela.currentConversationId", conversation.id);
       }
+      const requestViewVersion = conversationViewRef.current;
       const response = await api.chat.send({
         conversationId: activeConversationId,
         content,
@@ -1199,6 +1202,10 @@ export default function App() {
         environment: conversationEnvironment,
       });
       const responseConversationId = response.conversationId || activeConversationId;
+      if (requestViewVersion !== conversationViewRef.current) {
+        await refreshConversations();
+        return;
+      }
       await loadConversation(responseConversationId);
       const refreshedConversations = await refreshConversations();
       const currentConversation = refreshedConversations.find(
