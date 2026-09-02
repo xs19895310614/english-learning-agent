@@ -1,0 +1,34 @@
+node_modules/
+dist/
+dist-electron/
+release/
+out/
+*.log
+.vite/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+
+# Databases, caches, and user data
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.sqlite-shm
+*.sqlite-wal
+cache/
+.cache/
+user-data/
+userdata/
+data/
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

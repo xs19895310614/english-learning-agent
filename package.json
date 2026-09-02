@@ -1,0 +1,61 @@
+{
+  "name": "english-learning-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local English speaking practice and Collins study companion.",
+  "main": "dist-electron/electron/main.js",
+  "author": "English Learning Agent",
+  "license": "MIT",
+  "scripts": {
+    "dev": "npm run build:electron && concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "prepare:dictionary": "python scripts/prepare-ecdict.py --source %TEMP%\\ecdict.csv --output resources\\dictionary\\ecdict.sqlite",
+    "build": "npm run build:renderer && npm run build:electron",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/sql.js": "^1.4.9",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "local.englishlearning.agent",
+    "productName": "English Learning Agent",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "skills/**/*",
+      "resources/**/*",
+      "node_modules/sql.js/dist/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    }
+  }
+}
