@@ -37,15 +37,58 @@ function buildSystemPrompt(mode: "light" | "detailed", environment: Conversation
 
   return [
     "You are a friendly English speaking coach for a Chinese learner.",
-    "Reply in natural English first.",
-    "Then analyze the user's latest message and correct unnatural or incorrect English.",
+    "Reply to the FINAL user message only; do not continue or answer an earlier turn instead.",
+    "Reply in natural English first, then analyze that same final user message.",
     environmentRules[environment],
     "Return valid JSON only with this shape:",
     '{ "assistantReply": string, "correction": { "original": string, "recommended": string, "reason": string, "details"?: string[], "alternatives"?: string[] } | null }',
+    "If correction is not null, correction.original must exactly reproduce the FINAL user message, including all words; never use text from an earlier turn.",
     detailRules,
     "If the user's English is already natural, set correction to null.",
     "Do not include markdown fences or any extra text.",
   ].join(" ");
+}
+
+function normalizeChatText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function validateChatPayload(payload: ModelPayload, latestUserMessage: string): ModelPayload {
+  const assistantReply = payload.assistantReply.trim();
+  const correction = payload.correction;
+  if (!assistantReply) {
+    throw new Error("AI 返回了空回复。");
+  }
+
+  if (!correction || typeof correction !== "object") {
+    return { assistantReply, correction: null };
+  }
+
+  const original = typeof correction.original === "string" ? correction.original.trim() : "";
+  const recommended = typeof correction.recommended === "string" ? correction.recommended.trim() : "";
+  const reason = typeof correction.reason === "string" ? correction.reason.trim() : "";
+  if (!original || !recommended || !reason) {
+    return { assistantReply, correction: null };
+  }
+
+  if (normalizeChatText(original) !== normalizeChatText(latestUserMessage)) {
+    return { assistantReply, correction: null };
+  }
+
+  return {
+    assistantReply,
+    correction: {
+      original,
+      recommended,
+      reason,
+      details: Array.isArray(correction.details)
+        ? correction.details.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        : undefined,
+      alternatives: Array.isArray(correction.alternatives)
+        ? correction.alternatives.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        : undefined,
+    },
+  };
 }
 
 function safeParseJson(content: string): ModelPayload | null {
@@ -411,24 +454,38 @@ export async function sendChatMessage(input: {
     const history = await buildHistory(conversationId);
     const payload = await callDeepSeek(settings.model, settings.baseUrl, apiKey, [
       { role: "system", content: buildSystemPrompt(input.correctionMode, input.environment) },
-      ...history,
-    ]);
+      ...history.slice(0, -1),
+      {
+        role: "user",
+        content: [
+          "FINAL_USER_MESSAGE_TO_ANSWER:",
+          input.content,
+          "Answer this message now. Do not answer an earlier message.",
+        ].join("\\n"),
+      },
+    ], {
+      temperature: 0.25,
+      maxTokens: 1200,
+      timeoutMs: 12000,
+      retries: 1,
+    });
     const rawContent = payload.choices?.[0]?.message?.content ?? "";
-    const parsed = safeParseJson(rawContent) ?? {
-      assistantReply: rawContent.trim() || "我已经准备好和你练习英语了。",
-      correction: fallbackCorrection(rawContent),
-    };
+    const parsed = safeParseJson(rawContent);
+    if (!parsed) {
+      throw new Error(rawContent.trim() ? "AI 返回格式无法解析。" : "AI 返回了空回复。");
+    }
+    const validated = validateChatPayload(parsed, input.content);
     const assistant = await appendChatMessage(
       conversationId,
       "assistant",
-      parsed.assistantReply,
-      parsed.correction,
+      validated.assistantReply,
+      validated.correction,
     );
     return {
       conversationId,
       message: assistant,
-      correction: parsed.correction,
-      assistantText: parsed.assistantReply,
+      correction: validated.correction,
+      assistantText: validated.assistantReply,
     };
   } catch (error) {
     const assistant = await appendChatMessage(
