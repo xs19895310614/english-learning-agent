@@ -423,17 +423,6 @@ textarea:focus {
   width: 100%;
 }
 
-.message-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: var(--muted);
-  text-transform: capitalize;
-}
-
 .message-bubble {
   white-space: pre-wrap;
   word-break: break-word;

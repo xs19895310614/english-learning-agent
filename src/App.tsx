@@ -163,18 +163,6 @@ function deriveStudyDraftFromLookup(result: LookupResult): StudyDraft {
   };
 }
 
-function deriveStudyDraftFromMessage(message: ConversationMessage): StudyDraft {
-  const text = message.correction?.recommended || message.content;
-  return {
-    type: "sentence",
-    english: text,
-    chineseMeaning: "",
-    source: "conversation",
-    tags: "",
-    note: "",
-  };
-}
-
 function deriveStudyDraftFromItem(item: StudyItem): StudyDraft {
   return {
     id: item.id,
@@ -833,9 +821,8 @@ function MessageView(props: {
   message: ConversationMessage;
   onTokenLookup: (query: string, anchor: AnchorPoint, context: string) => void;
   onSelectionLookup: (query: string, anchor: AnchorPoint, context: string) => void;
-  onSave: (message: ConversationMessage) => void;
 }) {
-  const { message, onTokenLookup, onSelectionLookup, onSave } = props;
+  const { message, onTokenLookup, onSelectionLookup } = props;
   const tokens = useMemo(() => tokenize(message.content), [message.content]);
 
   const handleMouseUp = (event: MouseEvent<HTMLDivElement>) => {
@@ -855,11 +842,6 @@ function MessageView(props: {
   return (
     <div className={`message-row ${message.role}`}>
       <div className="message-shell">
-        <div className="message-meta">
-          <button className="icon-button" type="button" onClick={() => onSave(message)} aria-label="收藏">
-            <Plus size={14} />
-          </button>
-        </div>
         <div className="message-bubble" onMouseUp={handleMouseUp}>
           {tokens.map((part, index) => {
             if (/^\s+$/.test(part)) {
@@ -956,12 +938,16 @@ export default function App() {
   const [settingsMessage, setSettingsMessage] = useState("");
   const lookupRequestRef = useRef(0);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const conversationViewRef = useRef(0);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const sentenceTranslationAttemptsRef = useRef(new Set<string>());
 
   const api = window.electronAPI;
 
   const loadConversation = async (id: string) => {
+    const viewVersion = ++conversationViewRef.current;
     const history = await api.chat.history(id);
+    if (viewVersion !== conversationViewRef.current) return;
     setMessages(history);
   };
 
@@ -1138,12 +1124,17 @@ export default function App() {
 
   const startNewConversation = async () => {
     const conversation = await api.chat.conversation();
+    conversationViewRef.current += 1;
     setConversationId(conversation.id);
     setConversationTitle(conversation.title);
     setMessages([]);
+    setChatInput("");
+    setHoverLookup(null);
+    setDetailLookup(null);
     setConversations((current) => [conversation, ...current]);
     setActiveTab("chat");
     window.localStorage.setItem("ela.currentConversationId", conversation.id);
+    window.requestAnimationFrame(() => composerRef.current?.focus());
   };
 
   const selectConversation = async (conversation: Conversation) => {
@@ -1151,10 +1142,12 @@ export default function App() {
       setActiveTab("chat");
       return;
     }
+    conversationViewRef.current += 1;
     setConversationId(conversation.id);
     setConversationTitle(conversation.title);
     setActiveTab("chat");
     setMessages([]);
+    setChatInput("");
     setHoverLookup(null);
     setDetailLookup(null);
     window.localStorage.setItem("ela.currentConversationId", conversation.id);
@@ -1175,12 +1168,14 @@ export default function App() {
     setConversationId("");
     setConversationTitle("新对话");
     setMessages([]);
+    setChatInput("");
     setHoverLookup(null);
     setDetailLookup(null);
     setDetailHistory([]);
     setDetailReturnHover(null);
     setActiveTab("chat");
     window.localStorage.removeItem("ela.currentConversationId");
+    window.requestAnimationFrame(() => composerRef.current?.focus());
   };
 
   const sendChat = async () => {
@@ -1259,13 +1254,6 @@ export default function App() {
       throw new Error(enriched.message || "AI 暂时没有返回补充内容");
     }
     return mergeLookupResults(base, enriched);
-  };
-
-  const saveMessageToLibrary = async (message: ConversationMessage) => {
-    setEditorState({
-      mode: "create",
-      draft: deriveStudyDraftFromMessage(message),
-    });
   };
 
   const enrichLookup = async (result: LookupResult) => {
@@ -1431,7 +1419,6 @@ export default function App() {
               message={message}
               onTokenLookup={handleTokenLookup}
               onSelectionLookup={handleSelectionLookup}
-              onSave={saveMessageToLibrary}
             />
           ))
           ) : (
@@ -1443,6 +1430,7 @@ export default function App() {
       </div>
       <div className="composer">
         <textarea
+          ref={composerRef}
           value={chatInput}
           onChange={(event) => setChatInput(event.target.value)}
           onKeyDown={(event) => {
