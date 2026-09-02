@@ -34,7 +34,7 @@ python scripts/prepare-ecdict.py --source "C:\path\to\ecdict.csv" --output "reso
 
 ## DeepSeek 设置
 
-在应用的“设置”页面输入 DeepSeek API Key、接口地址和模型名称。API Key 不应写入源代码或环境文件。
+在应用的“设置”页面输入 DeepSeek API Key、接口地址和模型名称.
 
 ## 隐私与安全
 
