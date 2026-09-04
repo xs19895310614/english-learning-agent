@@ -46,12 +46,53 @@ describe("dictionary routing", () => {
   });
 
   it("returns a local hit without calling AI", async () => {
-    mocks.lookupLocalDictionary.mockResolvedValue(result("local-dictionary"));
+    mocks.lookupLocalDictionary.mockResolvedValue({
+      ...result("local-dictionary"),
+      examples: [{ english: "This is a test.", chinese: "这是一个测试。" }],
+    });
 
     const response = await lookupDictionary({ query: "test" });
 
     expect(response.source).toBe("local-dictionary");
     expect(mocks.lookupWithDeepSeek).not.toHaveBeenCalled();
+  });
+
+  it("automatically enriches a local hit when examples are missing", async () => {
+    const local = {
+      ...result("local-dictionary"),
+      query: "automatic enrichment word",
+      normalizedQuery: "automatic enrichment word",
+    };
+    const supplement = {
+      ...result("ai"),
+      examples: [{ english: "This is a natural example.", chinese: "这是一个自然的例句。" }],
+    };
+    mocks.lookupLocalDictionary.mockResolvedValue(local);
+    mocks.lookupWithDeepSeek.mockResolvedValue(supplement);
+
+    const response = await lookupDictionary({ query: "automatic enrichment word" });
+
+    expect(response.examples).toEqual(supplement.examples);
+    expect(response.senses).toEqual(local.senses);
+    expect(mocks.lookupWithDeepSeek).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls AI enrichment separately when a local result has no examples", async () => {
+    const local = {
+      ...result("local-dictionary"),
+      examples: [],
+    };
+    const supplement = {
+      ...result("ai"),
+      examples: [{ english: "A useful example.", chinese: "一个有用的例句。" }],
+    };
+    mocks.lookupLocalDictionary.mockResolvedValue(local);
+    mocks.lookupWithDeepSeek.mockResolvedValue(supplement);
+
+    const response = await enrichDictionary({ query: "test", base: local });
+
+    expect(response.examples).toEqual(supplement.examples);
+    expect(mocks.lookupWithDeepSeek).toHaveBeenCalledTimes(1);
   });
 
   it("uses AI only after a local miss", async () => {

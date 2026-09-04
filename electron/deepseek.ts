@@ -130,6 +130,7 @@ async function callDeepSeek(
   const retries = Math.max(0, options.retries ?? 1);
   const timeoutMs = Math.max(3000, options.timeoutMs ?? 12000);
   let lastError: unknown;
+  let useJsonResponseFormat = true;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const controller = new AbortController();
@@ -146,7 +147,7 @@ async function callDeepSeek(
           messages,
           temperature: options.temperature ?? 0.7,
           max_tokens: options.maxTokens ?? 800,
-          response_format: { type: "json_object" },
+          ...(useJsonResponseFormat ? { response_format: { type: "json_object" } } : {}),
         }),
         signal: controller.signal,
       });
@@ -158,11 +159,22 @@ async function callDeepSeek(
           `DeepSeek 请求失败：${response.status} ${response.statusText}${text ? ` - ${text}` : ""}`,
         ) as Error & { retryable?: boolean };
         error.retryable = retryable;
+        if (
+          useJsonResponseFormat &&
+          (response.status === 400 || response.status === 404 || response.status === 422) &&
+          /response[_ -]?format|json[_ -]?object|unsupported/i.test(text)
+        ) {
+          useJsonResponseFormat = false;
+          lastError = error;
+          continue;
+        }
         if (!retryable || attempt >= retries) throw error;
         lastError = error;
       } else {
         return response.json() as Promise<{
-          choices?: Array<{ message?: { content?: string } }>;
+          choices?: Array<{
+            message?: { content?: unknown; reasoning_content?: unknown };
+          }>;
         }>;
       }
     } catch (error) {
@@ -201,7 +213,11 @@ type DictionaryModelPayload = {
 };
 
 function parseJsonObject(content: string) {
-  const trimmed = content.trim();
+  const trimmed = content
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
   if (!trimmed) return null;
   const candidates = [trimmed];
   const firstBrace = trimmed.indexOf("{");
@@ -213,10 +229,33 @@ function parseJsonObject(content: string) {
     try {
       return JSON.parse(candidate) as DictionaryModelPayload;
     } catch {
-      // try another candidate
+      try {
+        const repaired = candidate
+          .replace(/,\s*([}\]])/g, "$1")
+          .replace(/[“”]/g, '"')
+          .replace(/[‘’]/g, "'");
+        return JSON.parse(repaired) as DictionaryModelPayload;
+      } catch {
+        // try another candidate
+      }
     }
   }
   return null;
+}
+
+function extractMessageContent(message: { content?: unknown; reasoning_content?: unknown } | undefined) {
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part === "string" ? part : part && typeof part === "object" && "text" in part ? String(part.text) : ""))
+      .join("\n")
+      .trim();
+  }
+  if (content && typeof content === "object") {
+    return JSON.stringify(content);
+  }
+  return typeof message?.reasoning_content === "string" ? message.reasoning_content : "";
 }
 
 function asStringArray(value: unknown) {
@@ -374,7 +413,7 @@ export async function lookupWithDeepSeek(input: {
       retries: 1,
     },
   );
-  const rawContent = payload.choices?.[0]?.message?.content ?? "";
+  const rawContent = extractMessageContent(payload.choices?.[0]?.message);
   const parsed = parseJsonObject(rawContent);
   if (!parsed) {
     const looksLikeSentence =
@@ -469,7 +508,7 @@ export async function sendChatMessage(input: {
       timeoutMs: 12000,
       retries: 1,
     });
-    const rawContent = payload.choices?.[0]?.message?.content ?? "";
+    const rawContent = extractMessageContent(payload.choices?.[0]?.message);
     const parsed = safeParseJson(rawContent);
     if (!parsed) {
       throw new Error(rawContent.trim() ? "AI 返回格式无法解析。" : "AI 返回了空回复。");

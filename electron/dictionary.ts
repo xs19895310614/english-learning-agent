@@ -134,11 +134,28 @@ export async function lookupDictionary(input: {
     );
 
     if (local?.found) {
-      const merged = supplement?.found
+      let merged = supplement?.found
         ? mergeLookupResults(local, supplement)
         : cached?.source === "ai" && cached.found
           ? mergeLookupResults(local, cached)
           : local;
+      if (!merged.examples?.length && !supplement?.found && !(cached?.source === "ai" && cached.found)) {
+        try {
+          const aiSupplement = await lookupWithDeepSeek({
+            query,
+            direction,
+            context: input.context,
+            base: local,
+          });
+          if (aiSupplement.found) {
+            merged = mergeLookupResults(local, aiSupplement);
+            remember(supplementKey, aiSupplement);
+            persistCache(supplementKey, aiSupplement);
+          }
+        } catch {
+          // Keep the fast local result when optional example enrichment is unavailable.
+        }
+      }
       remember(key, merged);
       persistCache(key, merged);
       return merged;
