@@ -57,24 +57,14 @@ describe("dictionary routing", () => {
     expect(mocks.lookupWithDeepSeek).not.toHaveBeenCalled();
   });
 
-  it("automatically enriches a local hit when examples are missing", async () => {
-    const local = {
-      ...result("local-dictionary"),
-      query: "automatic enrichment word",
-      normalizedQuery: "automatic enrichment word",
-    };
-    const supplement = {
-      ...result("ai"),
-      examples: [{ english: "This is a natural example.", chinese: "这是一个自然的例句。" }],
-    };
+  it("returns a local hit immediately when examples are missing", async () => {
+    const local = { ...result("local-dictionary"), examples: [] };
     mocks.lookupLocalDictionary.mockResolvedValue(local);
-    mocks.lookupWithDeepSeek.mockResolvedValue(supplement);
 
-    const response = await lookupDictionary({ query: "automatic enrichment word" });
+    const response = await lookupDictionary({ query: "fast local word" });
 
-    expect(response.examples).toEqual(supplement.examples);
-    expect(response.senses).toEqual(local.senses);
-    expect(mocks.lookupWithDeepSeek).toHaveBeenCalledTimes(1);
+    expect(response).toEqual(local);
+    expect(mocks.lookupWithDeepSeek).not.toHaveBeenCalled();
   });
 
   it("calls AI enrichment separately when a local result has no examples", async () => {

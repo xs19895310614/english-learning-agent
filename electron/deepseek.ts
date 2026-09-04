@@ -212,7 +212,7 @@ type DictionaryModelPayload = {
   message?: string;
 };
 
-function parseJsonObject(content: string) {
+function parseJsonObject(content: string): DictionaryModelPayload | null {
   const trimmed = content
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -227,14 +227,25 @@ function parseJsonObject(content: string) {
   }
   for (const candidate of candidates) {
     try {
-      return JSON.parse(candidate) as DictionaryModelPayload;
+      const parsed = JSON.parse(candidate) as unknown;
+      if (typeof parsed === "string") {
+        const nested: DictionaryModelPayload | null = parseJsonObject(parsed);
+        if (nested) return nested;
+      }
+      if (parsed && typeof parsed === "object") {
+        const record = parsed as Record<string, unknown>;
+        const wrapped = record.data || record.result || record.output;
+        if (wrapped && typeof wrapped === "object") return wrapped as DictionaryModelPayload;
+        return parsed as DictionaryModelPayload;
+      }
     } catch {
       try {
         const repaired = candidate
           .replace(/,\s*([}\]])/g, "$1")
           .replace(/[“”]/g, '"')
           .replace(/[‘’]/g, "'");
-        return JSON.parse(repaired) as DictionaryModelPayload;
+        const parsed = JSON.parse(repaired) as unknown;
+        if (parsed && typeof parsed === "object") return parsed as DictionaryModelPayload;
       } catch {
         // try another candidate
       }
@@ -324,9 +335,12 @@ function normalizeDictionaryPayload(
       chinese: typeof example.chinese === "string" ? example.chinese.trim() : undefined,
     }))
     .slice(0, 8);
+  const collocations = asStringArray(payload.collocations).slice(0, 12);
   const found = Boolean(
     translation ||
       senses.length ||
+      collocations.length ||
+      synonyms.length ||
       alternatives.length ||
       examples.length ||
       (typeof payload.headword === "string" && payload.headword.trim()),
@@ -341,7 +355,7 @@ function normalizeDictionaryPayload(
       typeof payload.pronunciation === "string" ? payload.pronunciation.trim() || undefined : undefined,
     translation,
     senses,
-    collocations: asStringArray(payload.collocations).slice(0, 12),
+    collocations,
     examples,
     synonyms: synonyms.slice(0, 12),
     alternatives: alternatives.slice(0, 12),

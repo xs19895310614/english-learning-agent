@@ -589,6 +589,7 @@ function StudyEditorModal(props: {
   const [lookingUp, setLookingUp] = useState(false);
   const [lookupMessage, setLookupMessage] = useState("");
   const lookupRequestRef = useRef(0);
+  const lookupActiveRef = useRef(false);
 
   useEffect(() => {
     setDraft(initial);
@@ -599,6 +600,7 @@ function StudyEditorModal(props: {
     const english = value.trim();
     if (!english) return;
     const requestId = ++lookupRequestRef.current;
+    lookupActiveRef.current = true;
     setLookingUp(true);
     setLookupMessage("正在查询翻译...");
     try {
@@ -658,6 +660,7 @@ function StudyEditorModal(props: {
       if (requestId === lookupRequestRef.current) {
         setLookingUp(false);
       }
+      lookupActiveRef.current = false;
     }
   };
 
@@ -666,8 +669,8 @@ function StudyEditorModal(props: {
     const english = draft.english.trim();
     if (!english || draft.lookup || (mode === "edit" && draft.chineseMeaning.trim())) return;
     const timer = window.setTimeout(() => {
-      void runAutoLookup(english);
-    }, 300);
+      if (!lookupActiveRef.current) void runAutoLookup(english);
+    }, 800);
     return () => window.clearTimeout(timer);
   }, [draft.english, draft.lookup, draft.type, mode, open]);
 
@@ -1644,6 +1647,30 @@ export default function App() {
                           <span className="chip" key={item}>
                             {item}
                           </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {lookupResult.collocations.length ? (
+                    <div className="lookup-inline">
+                      <div className="section-label">常见搭配</div>
+                      <div className="chip-row">
+                        {lookupResult.collocations.map((item) => (
+                          <button className="chip chip-button" type="button" key={item} onClick={() => void lookupPhraseDetail(item, lookupResult.query)}>
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {lookupResult.synonyms?.length ? (
+                    <div className="lookup-inline">
+                      <div className="section-label">近义词</div>
+                      <div className="chip-row">
+                        {lookupResult.synonyms.map((item) => (
+                          <button className="chip chip-button" type="button" key={item} onClick={() => void lookupPhraseDetail(item, lookupResult.query)}>
+                            {item}
+                          </button>
                         ))}
                       </div>
                     </div>
